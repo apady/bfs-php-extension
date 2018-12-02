@@ -144,7 +144,9 @@ PHP_METHOD(BFS, init)
      #endif
         zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
-        obj->fs =bfs_open_file_system(ZSTR_VAL(flag_file_path));     
+        obj->fs =bfs_open_file_system(ZSTR_VAL(flag_file_path));
+    if(obj->fs==NULL)
+        RETURN_FALSE;
   	 RETURN_TRUE;
 }
 
