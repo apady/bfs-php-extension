@@ -31,7 +31,7 @@
 ZEND_DECLARE_MODULE_GLOBALS(bfs);
 
  struct bfs_object {
-    char * hello_ptr;
+    char * bfs_status_t;
     bfs_fs_t *fs;
     zend_object std;
 };
@@ -145,6 +145,7 @@ PHP_METHOD(BFS, init)
         zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
         obj->fs =bfs_open_file_system(ZSTR_VAL(flag_file_path));
+        obj->bfs_status_t=NULL;
     if(obj->fs==NULL)
         RETURN_FALSE;
   	 RETURN_TRUE;
@@ -387,16 +388,15 @@ PHP_METHOD(BFS, cat)
 PHP_METHOD(BFS, status)
 {     
      
-       const char* status_result_string;
         long int ret;
         
         zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
      if(obj->fs==NULL) RETURN_NULL();
-        ret=bfs_status(obj->fs, status_result_string);
-        if(status_result_string==NULL)
+        ret=bfs_status(obj->fs, obj->bfs_status_t);
+        if(obj->bfs_status_t==NULL)
             RETURN_LONG(ret);
-       RETURN_STRING(status_result_string);
+       RETURN_STRING(obj->bfs_status_t);
         
 }
 
