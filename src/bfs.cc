@@ -32,12 +32,13 @@ ZEND_DECLARE_MODULE_GLOBALS(bfs);
 
  struct bfs_object {
     char * bfs_status_t;
+    char * read_buf;
     bfs_fs_t *fs;
+    bfs_file_t *file;
     zend_object std;
 };
 /* True global resources - no need for thread safety here */
 static int le_bfs;
-static bfs_fs_t *fs;
 zend_class_entry *bfs_ce;
 zend_object_handlers bfs_object_handlers;
 
@@ -52,17 +53,11 @@ PHP_INI_END()
 */
 /* }}} */
 
-/* Remove the following function when you have successfully modified config.m4
-   so that your module can be compiled into PHP, it exists only for testing
-   purposes. */
-
-/* Every user-visible function in PHP should document itself in the source */
-/* {{{ proto string confirm_bfs_compiled(string arg)
-   Return a string to confirm that the module is compiled in */
 
 static inline bfs_object *bfs_fetch_object(zend_object *obj) /* {{{ */ {
         return (bfs_object *)((char*)(obj) - XtOffsetOf(bfs_object, std));
 }
+
 void bfs_object_free_storage(zend_object *object)
 {
     bfs_object *intern = bfs_fetch_object(object);
@@ -80,30 +75,18 @@ static  zend_object* bfs_object_create(zend_class_entry *type TSRMLS_DC)
     return &obj->std;
 }
 
-/* The previous line is meant fo vim and emacs, so it can correctly fold and
-   unfold functions in source code. See the corresponding marks just before
-   function definition, where the functions purpose is also documented. Please
-   follow this convention for the convenience of others editing your code.
-*/
-
-
-/* {{{ php_bfs_init_globals
- */
-/* Uncomment this function if you have INI entries
-static void php_bfs_init_globals(zend_bfs_globals *bfs_globals)
-{
-	bfs_globals->global_value = 0;
-	bfs_globals->global_string = NULL;
-}
-*/
-/* }}} */
-
 
 const zend_function_entry bfs_methods[] = {
     PHP_ME(BFS,  __construct,     NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
     PHP_ME(BFS,  __destruct,     NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
     PHP_ME(BFS,  ls,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  init,           NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  touchz,         NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  fopen,          NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  fclose,         NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  fread,           NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  fwrite,          NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  fseek,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  mkdir,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  rmdir,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  chmod,           NULL, ZEND_ACC_PUBLIC)
@@ -115,18 +98,21 @@ const zend_function_entry bfs_methods[] = {
     PHP_ME(BFS,  location,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  cat,       NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS,  status,       NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(BFS,  symlink,           NULL, ZEND_ACC_PUBLIC)
     PHP_ME(BFS, changeReplicaNum,      NULL, ZEND_ACC_PUBLIC)
     {NULL, NULL, NULL}
 };
+
 PHP_METHOD(BFS, __construct)
 {
 	RETURN_TRUE;
-
 }
+
 PHP_METHOD(BFS, __destruct)
 {
     zval  *self = getThis();
     bfs_object *obj = bfs_fetch_object(Z_OBJ_P((self)));
+    efree(obj->read_buf);
     RETURN_TRUE;
 }
 PHP_METHOD(BFS, init)
@@ -145,12 +131,142 @@ PHP_METHOD(BFS, init)
         zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
         obj->fs =bfs_open_file_system(ZSTR_VAL(flag_file_path));
+        obj->file=NULL;
         obj->bfs_status_t=NULL;
+        obj->read_buf=NULL;
     if(obj->fs==NULL)
         RETURN_FALSE;
   	 RETURN_TRUE;
 }
 
+PHP_METHOD(BFS, touchz)
+{
+    zend_string *path;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "S", &path) == FAILURE) {
+        return;
+       }    
+     #else
+     ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STR(path)
+        ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    result=bfs_touchz(obj->fs,ZSTR_VAL(path));
+    RETURN_LONG(result);
+        
+}
+
+PHP_METHOD(BFS, fopen)
+{
+    zend_string *path;
+    zend_string *mode;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "SS", &path,&mode) == FAILURE) {
+        return;
+       }    
+     #else
+     ZEND_PARSE_PARAMETERS_START(2, 2)
+        Z_PARAM_STR(path)
+        Z_PARAM_STR(mode)
+        ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    if(strcmp(ZSTR_VAL(mode),"w")==0)
+        obj->file=bfs_open_file(obj->fs,ZSTR_VAL(path),O_WRONLY);
+    if(strcmp(ZSTR_VAL(mode),"r")==0)
+        obj->file=bfs_open_file(obj->fs,ZSTR_VAL(path),O_RDONLY);
+    if(obj->file==NULL)
+        RETURN_FALSE;
+     RETURN_TRUE;        
+}
+
+PHP_METHOD(BFS, fclose)
+{             
+    long int ret;       
+    zval *object = getThis();
+    bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+        ret=bfs_close_file(obj->file);
+      RETURN_LONG(ret);       
+}
+
+PHP_METHOD(BFS,fread)
+{
+    long int len;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "l",&len) == FAILURE) {
+        return;
+       }    
+     #else
+     ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_LONG(len)
+        ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    if((obj->read_buf=(char*)erealloc(obj->read_buf,len))==NULL)
+        RETURN_NULL();
+    result=bfs_read_file(obj->file,obj->read_buf,len);
+    if(obj->read_buf==NULL)
+        RETURN_LONG(result);
+    RETURN_STRING(obj->read_buf);       
+}
+PHP_METHOD(BFS,fwrite)
+{
+    zend_string *buf;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "S",&buf) == FAILURE) {
+        return;
+       }    
+     #else
+     ZEND_PARSE_PARAMETERS_START(1, 1)
+        Z_PARAM_STR(buf)
+    ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    result=bfs_write_file(obj->file,ZSTR_VAL(buf),ZSTR_LEN(buf));
+    RETURN_LONG(result);   
+}
+
+PHP_METHOD(BFS,fseek)
+{
+    long int offset;
+    long int whence;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "l|l",&offset,&whence) == FAILURE) {
+        return;
+       }    
+     #else
+     ZEND_PARSE_PARAMETERS_START(1,2)
+        Z_PARAM_LONG(offset)
+        Z_PARAM_OPTIONAL
+        Z_PARAM_LONG(whence)
+    ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    result=bfs_seek(obj->file,offset,whence);
+    RETURN_LONG(result);   
+}
 PHP_METHOD(BFS, ls)
 {
 	zend_string *path;
@@ -386,10 +502,8 @@ PHP_METHOD(BFS, cat)
          RETURN_LONG(result);
 }
 PHP_METHOD(BFS, status)
-{     
-     
-        long int ret;
-        
+{          
+        long int ret;        
         zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
      if(obj->fs==NULL) RETURN_NULL();
@@ -400,6 +514,29 @@ PHP_METHOD(BFS, status)
         
 }
 
+PHP_METHOD(BFS, symlink)
+{
+    zend_string *src;
+    zend_string *dst;
+    long int result;
+    #ifndef FAST_ZPP
+    /* Get function parameters and do error-checking. */
+    if (zend_parse_parameters(ZEND_NUM_ARGS(), "SS", &src,&dst) == FAILURE) {
+        return;
+       }
+     #else
+     ZEND_PARSE_PARAMETERS_START(2, 2)
+        Z_PARAM_STR(src)
+        Z_PARAM_STR(dst)
+        ZEND_PARSE_PARAMETERS_END();
+     #endif
+    zval *object = getThis();
+        bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
+    if(obj->fs==NULL) RETURN_NULL();
+    result=bfs_symlink(obj->fs,ZSTR_VAL(src),ZSTR_VAL(dst));
+    RETURN_LONG(result);
+
+}
 PHP_METHOD(BFS,changeReplicaNum)
 {
         zend_string *path;

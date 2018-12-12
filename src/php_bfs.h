@@ -61,6 +61,12 @@ PHP_METHOD(BFS, __construct);
 PHP_METHOD(BFS, __destruct);
 PHP_METHOD(BFS, ls);
 PHP_METHOD(BFS, init);
+PHP_METHOD(BFS, touchz);
+PHP_METHOD(BFS, fopen);
+PHP_METHOD(BFS, fclose);
+PHP_METHOD(BFS, fread);
+PHP_METHOD(BFS, fwrite);
+PHP_METHOD(BFS, fseek);
 PHP_METHOD(BFS, mkdir);
 PHP_METHOD(BFS, rmdir);
 PHP_METHOD(BFS, chmod);
@@ -72,6 +78,7 @@ PHP_METHOD(BFS, du);
 PHP_METHOD(BFS, location);
 PHP_METHOD(BFS, cat);
 PHP_METHOD(BFS, status);
+PHP_METHOD(BFS, symlink);
 PHP_METHOD(BFS,changeReplicaNum);
 
 /*
