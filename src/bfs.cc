@@ -216,8 +216,9 @@ PHP_METHOD(BFS,fread)
     zval *object = getThis();
         bfs_object *obj = bfs_fetch_object(Z_OBJ_P((object)));
     if(obj->fs==NULL) RETURN_NULL();
-    if((obj->read_buf=(char*)erealloc(obj->read_buf,len))==NULL)
+    if((obj->read_buf=(char*)erealloc(obj->read_buf,len+1))==NULL)
         RETURN_NULL();
+    memset(obj->read_buf,0,len+1);
     result=bfs_read_file(obj->file,obj->read_buf,len);
     if(obj->read_buf==NULL)
         RETURN_LONG(result);
